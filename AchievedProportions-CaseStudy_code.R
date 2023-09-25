@@ -206,7 +206,7 @@ predictions$`Community` <- factor(predictions$`Community`, levels = c("1:0:0:0",
 
 ggplot2::ggplot(predictions, aes(fill=YieldSpecies, y=predictions, x=Community)) +
          geom_bar(position="stack", stat="identity") +
-         scale_fill_manual(values = c("#ffcb66", "#669aff", "#cb66ff", "#9aff66", "#000000")) +
+         scale_fill_manual(values = c("#ffcb66", "#669aff", "#cb66ff", "#9aff66", "#000000"), , breaks=c("NLF_Ach", "C3G_Ach", "LF_Ach",  "C4G_Ach", "Weeds_Ach")) +
          facet_grid(~richness, scales = "free_x", space = "free_x") + # add , switch="both" to move richness group name labels to bottom
          expand_limits(x = 2.1) +
          theme(axis.text = element_text(size=20, angle = 20),
