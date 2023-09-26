@@ -3,9 +3,13 @@
 library(DImodels) # For creating interaction columns
 library(nlme) # For gls regression
 library(ggplot2) # For stacked barcharts
+library(Compositional) # ZADR
+library(dplyr) # Data manipulation
 
 ################################################################################################################################################################
 
+
+##CONTINUOUS ACHIEVED DI MODEL
 ##Data Preparation #############################################################################################################################################
 
 setwd("C:/Users/Administrator/OneDrive - TCDUD.onmicrosoft.com/Documents/PhD Stuff/Tasks/Task 11 - Achieved Proportion Modelling/Cedar Creek Data")
@@ -194,7 +198,8 @@ richness <- c(4, 1, 1, 1, 1, 2, 3)
 predictData <- BioCON[which(BioCON$Plot %in% plots), -12:-15]
 
 # predict from selected communities
-predictions <- predict(AVmodel, predictData)
+predictions <- predict(object = AVmodel, newdata = predictData)
+intervals(AVmodel)
 
 # bind information needed for plotting
 predictions <- cbind(BioCON[which(BioCON$Plot %in% plots), -12:-15], predictions)
@@ -206,7 +211,7 @@ predictions$`Community` <- factor(predictions$`Community`, levels = c("1:0:0:0",
 
 ggplot2::ggplot(predictions, aes(fill=YieldSpecies, y=predictions, x=Community)) +
          geom_bar(position="stack", stat="identity") +
-         scale_fill_manual(values = c("#ffcb66", "#669aff", "#cb66ff", "#9aff66", "#000000"), , breaks=c("NLF_Ach", "C3G_Ach", "LF_Ach",  "C4G_Ach", "Weeds_Ach")) +
+         scale_fill_manual(values = c("#ffcb66", "#669aff", "#cb66ff", "#9aff66", "#000000"), breaks=c("NLF_Ach", "C3G_Ach", "LF_Ach",  "C4G_Ach", "Weeds_Ach")) +
          facet_grid(~richness, scales = "free_x", space = "free_x") + # add , switch="both" to move richness group name labels to bottom
          expand_limits(x = 2.1) +
          theme(axis.text = element_text(size=20, angle = 20),
@@ -221,5 +226,134 @@ ggplot2::ggplot(predictions, aes(fill=YieldSpecies, y=predictions, x=Community))
                panel.background = element_rect(fill = "white"), #^
                panel.spacing = unit(0.25, "cm")) +
          labs(y = "Predicted Yield")
+
+################################################################################################################################################################
+################################################################################################################################################################
+
+
+
+
+##ZADR ACHIEVED DI MODEL
+##Data Preparation #############################################################################################################################################
+
+setwd("C:/Users/Administrator/OneDrive - TCDUD.onmicrosoft.com/Documents/PhD Stuff/Tasks/Task 6 - RPackage/COST database")
+
+AgroDiv <- read.csv("biomass.csv") # biomass response data
+
+AgroDiv <- AgroDiv[which(AgroDiv$SITE == 1) ,] # Belgium site
+AgroDiv <- AgroDiv[which(AgroDiv$YEARN == 1) ,] # Year 2003 (first harvest year)
+
+AgroDiv <- AgroDiv %>% group_by(PLOT, G1, G2, L1, L2, TREAT, DENS,) %>%
+                       summarise(G1_Y = sum(G1_Y),
+                                 G2_Y = sum(G2_Y),
+                                 L1_Y = sum(L1_Y),
+                                 L2_Y = sum(L2_Y),
+                                 WEED_Y = sum(WEED_Y),
+                                 HARV_YIELD = sum(HARV_YIELD)
+                                 ) %>% as.data.frame()
+
+AgroDiv <- cbind(AgroDiv, DI_data(prop = 2:5, FG = c("G", "G", "L", "L"), what = c("AV", "ADD", "FG", "FULL"), data = AgroDiv))
+
+AgroDiv$G1_Yp <- AgroDiv$G1_Y / AgroDiv$HARV_YIELD
+AgroDiv$G2_Yp <- AgroDiv$G2_Y / AgroDiv$HARV_YIELD
+AgroDiv$L1_Yp <- AgroDiv$L1_Y / AgroDiv$HARV_YIELD
+AgroDiv$L2_Yp <- AgroDiv$L2_Y / AgroDiv$HARV_YIELD
+AgroDiv$WEED_Yp <- AgroDiv$WEED_Y / AgroDiv$HARV_YIELD
+
+
+################################################################################################################################################################
+
+##ZADR Achieved DI models #####################################################################################################################################
+
+Yp <- as.matrix(AgroDiv[, 28:32])
+X_ID <- as.matrix(AgroDiv[, 2:5])
+
+IDmodel <- Compositional::zadr2(y = Yp, x = X_ID, con = FALSE)
+
+
+Yp <- as.matrix(AgroDiv[, 28:32])
+X_AV <- as.matrix(AgroDiv[, c(2:5, 14)])
+
+AVmodel <- Compositional::zadr2(y = Yp, x = X_AV, con = FALSE)
+
+
+X_FG <- as.matrix(AgroDiv[, c(2:5, 15:17)])
+
+FGmodel <- Compositional::zadr2(y = Yp, x = X_FG, con = FALSE)
+
+
+X_ADD <- as.matrix(AgroDiv[, c(2:5, 18:21)])
+
+ADDmodel <- Compositional::zadr2(y = Yp, x = X_ADD, con = FALSE)
+
+
+X_FULL <- as.matrix(AgroDiv[, c(2:5, 22:27)])
+
+FULLmodel <- Compositional::zadr2(y = Yp, x = X_FULL, con = FALSE)
+
+
+
+Tmodel <- DImodels::DI(prop = 2:5, y = 13, DImodel = "AV", data = AgroDiv[, -14:-32])
+
+
+################################################################################################################################################################
+
+##Model Selection #############################################################################################################################################
+
+#ID vs AV (df = 1)
+pchisq((-2 * (IDmodel$loglik - AVmodel$loglik)), df = 1, lower.tail = FALSE)
+#AV model Better
+
+#AV vs ADD (df = 3)
+pchisq((-2 * (AVmodel$loglik - ADDmodel$loglik)), df = 3, lower.tail = FALSE)
+#AV model Better
+
+#AV vs FG (df = 2)
+pchisq((-2 * (AVmodel$loglik - FGmodel$loglik)), df = 2, lower.tail = FALSE)
+#AV model Better
+
+#AV vs FULL (df = 5)
+pchisq((-2 * (AVmodel$loglik - FULLmodel$loglik)), df = 5, lower.tail = FALSE)
+#AV model Better
+
+
+#AIC
+2 * (length(IDmodel$be) + 1) - 2 * IDmodel$loglik
+
+2 * (length(AVmodel$be) + 1) - 2 * AVmodel$loglik
+
+2 * (length(ADDmodel$be) + 1) - 2 * ADDmodel$loglik
+
+2 * (length(FGmodel$be) + 1) - 2 * FGmodel$loglik
+
+2 * (length(FULLmodel$be) + 1) - 2 * FULLmodel$loglik
+
+
+#BIC
+log(nrow(X_ID)) * (length(IDmodel$be) + 1) - 2 * IDmodel$loglik
+
+log(nrow(X_AV)) * (length(AVmodel$be) + 1) - 2 * AVmodel$loglik
+
+log(nrow(X_ADD)) * (length(ADDmodel$be) + 1) - 2 * ADDmodel$loglik
+
+log(nrow(X_FG)) * (length(FGmodel$be) + 1) - 2 * FGmodel$loglik
+
+log(nrow(X_FULL)) * (length(FULLmodel$be) + 1) - 2 * FULLmodel$loglik
+
+
+################################################################################################################################################################
+
+##Results ######################################################################################################################################################
+
+AVmodel$be
+
+AVmodel$sigma
+
+summary(Tmodel)
+
+################################################################################################################################################################
+
+##Plots ########################################################################################################################################################
+
 
 ################################################################################################################################################################
